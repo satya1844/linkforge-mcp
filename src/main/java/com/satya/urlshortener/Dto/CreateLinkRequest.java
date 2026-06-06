@@ -23,7 +23,7 @@ public class CreateLinkRequest {
     )
     private String customAlias; // nullable
 
-    @Min(value = 1, message = "Expiry must be at least 1 day")
+    @Min(value = 0, message = "Expiry must be at least 0 days")
     @Max(value = 365, message = "Expiry cannot exceed 365 days")
     private Integer expiresInDays; // nullable
 }

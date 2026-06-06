@@ -51,6 +51,11 @@ public class LinkController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{shortCode}/analytics")
+    public ResponseEntity<LinkAnalyticsResponse> getAnalytics(@PathVariable String shortCode) {
+        return ResponseEntity.ok(linkService.getAnalytics(shortCode));
+    }
+
     @GetMapping("/{shortCode}")
     public ResponseEntity<Void> redirectToOriginalUrl(
             @PathVariable String shortCode,
@@ -61,11 +66,6 @@ public class LinkController {
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, originalUrl)
                 .build();
-    }
-
-    @GetMapping("/{shortCode}/analytics")
-    public ResponseEntity<LinkAnalyticsResponse> getAnalytics(@PathVariable String shortCode) {
-        return ResponseEntity.ok(linkService.getAnalytics(shortCode));
     }
 
     }
