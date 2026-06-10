@@ -6,5 +6,5 @@ export const options = {
 };
 
 export default function () {
-    http.get('http://localhost:8080/urls/me');
+    http.get('http://localhost:8080/urls/me', { redirects: 0 });
 }

@@ -1,8 +1,8 @@
 package com.satya.urlshortener.Entity;
 
 import jakarta.persistence.*;
-        import lombok.*;
-        import java.time.LocalDateTime;
+import lombok.*;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
@@ -33,7 +33,12 @@ public class Link {
     private LocalDateTime expiresAt;
     private LocalDateTime deletedAt;
 
-    // One link can have many clicks
+    @Column(name = "grace_until")
+    private LocalDateTime graceUntil;
+
+    @Column(name = "grace_period_hours")
+    private Integer gracePeriodHours = 24;
+
     @OneToMany(mappedBy = "link", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LinkClick> clicks;
 }

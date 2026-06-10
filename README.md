@@ -315,7 +315,7 @@ public void processExpiredLinks() {
 ```sql
 -- V3__add_grace_period.sql
 ALTER TABLE links ADD COLUMN grace_until TIMESTAMP;
-ALTER TABLE links ADD COLUMN grace_period_hours INTEGER DEFAULT 24;
+ALTER TABLE links ADD COLUMN grace_period_hours INTEGER DEFAULT 24; b
 ```
 
 ---

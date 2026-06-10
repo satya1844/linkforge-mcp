@@ -1,0 +1,2 @@
+ALTER TABLE links ADD COLUMN grace_until TIMESTAMP;
+ALTER TABLE links ADD COLUMN grace_period_hours INTEGER DEFAULT 24;
