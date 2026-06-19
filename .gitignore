@@ -46,3 +46,5 @@ target/
 #mention application.properties if it contains sensitive information
 application.properties
 
+# AI/Developer Context File
+AI_CONTEXT.md

@@ -36,27 +36,26 @@ GET /urls/{shortCode}/analytics
  */
 
 @RestController
-@RequestMapping("/urls")
 public class LinkController {
 
-    LinkService linkService;
-    Encoder encoder;
-     public LinkController(LinkService linkService, Encoder encoder) {
-         this.encoder = encoder;
+    private final LinkService linkService;
+    private final Encoder encoder;
+
+    public LinkController(LinkService linkService, Encoder encoder) {
+        this.encoder = encoder;
         this.linkService = linkService;
-
     }
 
-    @PostMapping
+    @PostMapping("/urls")
     public ResponseEntity<?> createShortUrl(@Valid @RequestBody CreateLinkRequest request) {
-      LinkResponse response = linkService.createShortUrl(request);
-      //return 201 Created with Location header pointing to the new short URL
-      return ResponseEntity.status(HttpStatus.CREATED)
-              .header(HttpHeaders.LOCATION, response.getShortUrl())
-              .body(response);
+        LinkResponse response = linkService.createShortUrl(request);
+        // return 201 Created with Location header pointing to the new short URL
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header(HttpHeaders.LOCATION, response.getShortUrl())
+                .body(response);
     }
 
-    @GetMapping("/{shortCode}/analytics")
+    @GetMapping("/urls/{shortCode}/analytics")
     public ResponseEntity<LinkAnalyticsResponse> getAnalytics(@PathVariable String shortCode) {
         return ResponseEntity.ok(linkService.getAnalytics(shortCode));
     }
@@ -73,12 +72,17 @@ public class LinkController {
                 .build();
     }
 
-    @GetMapping
+    @GetMapping("/urls")
     public ResponseEntity<List<LinkResponse>> getAllLinks() {
         return ResponseEntity.ok(linkService.getAllLinks());
     }
 
+    @DeleteMapping("/urls/{shortCode}")
+    public ResponseEntity<Void> deleteLink(@PathVariable String shortCode) {
+        linkService.deleteLink(shortCode);
+        return ResponseEntity.noContent().build();
     }
+}
 
 
 

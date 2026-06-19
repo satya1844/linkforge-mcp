@@ -47,7 +47,7 @@ class LinkServiceTest {
     @Mock private ClickEventService clickEventService;
     @Mock private BloomFilterService bloomFilterService;
     @Mock private ValueOperations<String, String> valueOperations;
-    @Mock private MeterRegistry meterRegistry = mock(MeterRegistry.class);
+    private final MeterRegistry meterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
     private LinkService linkService;
 
     @BeforeEach

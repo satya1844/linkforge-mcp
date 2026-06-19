@@ -17,9 +17,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -48,11 +50,17 @@ class LinkControllerTest {
             .withUsername("test")
             .withPassword("test");
 
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis/redis-stack:latest"))
+            .withExposedPorts(6379);
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", redis::getFirstMappedPort);
         registry.add("app.baseUrl", () -> "http://localhost");
     }
 
@@ -84,7 +92,7 @@ class LinkControllerTest {
         mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.shortCode").isNotEmpty())
                 .andExpect(jsonPath("$.shortUrl").isNotEmpty())
                 .andExpect(jsonPath("$.originalUrl").value("https://example.com/very-long-url-for-testing"))
@@ -134,7 +142,7 @@ class LinkControllerTest {
         mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request1)))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
 
         CreateLinkRequest request2 = new CreateLinkRequest();
         request2.setOriginalUrl("https://example.com/second");
@@ -155,7 +163,7 @@ class LinkControllerTest {
         mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.shortCode").value("my-custom-url"));
     }
 
@@ -168,7 +176,7 @@ class LinkControllerTest {
         mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.expiresAt").isNotEmpty());
     }
 
@@ -180,14 +188,14 @@ class LinkControllerTest {
         String response = mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         String shortCode = objectMapper.readTree(response).get("shortCode").asText();
 
-        mockMvc.perform(get("/urls/" + shortCode))
+        mockMvc.perform(get("/" + shortCode))
                 .andExpect(status().isFound())
                 .andExpect(header().exists("Location"))
                 .andExpect(header().string("Location", "https://redirect-test.example.com"));
@@ -195,7 +203,7 @@ class LinkControllerTest {
 
     @Test
     void get_nonexistent_shortcode_returns_404() throws Exception {
-        mockMvc.perform(get("/urls/nonexistentcode123"))
+        mockMvc.perform(get("/nonexistentcode123"))
                 .andExpect(status().isNotFound());
     }
 
@@ -216,7 +224,7 @@ class LinkControllerTest {
 
         Thread.sleep(100);
 
-        mockMvc.perform(get("/urls/" + shortCode))
+        mockMvc.perform(get("/" + shortCode))
                 .andExpect(status().isGone());
     }
 
@@ -228,17 +236,17 @@ class LinkControllerTest {
         String response = mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         String shortCode = objectMapper.readTree(response).get("shortCode").asText();
 
-        mockMvc.perform(get("/urls/" + shortCode))
+        mockMvc.perform(get("/" + shortCode))
                 .andExpect(status().isFound());
 
-        mockMvc.perform(get("/urls/" + shortCode))
+        mockMvc.perform(get("/" + shortCode))
                 .andExpect(status().isFound());
 
         mockMvc.perform(get("/urls/" + shortCode + "/analytics"))

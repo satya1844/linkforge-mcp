@@ -52,8 +52,13 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         if ("POST".equalsIgnoreCase(method) && uri.startsWith("/urls")) {
             String apiKey = request.getHeader("X-API-Key");
             if (apiKey == null || apiKey.isBlank()) {
-                // No API key — auth filter handles this, just pass through here
-                return true;
+                // Fallback to client IP to prevent abuse when API key is missing
+                String ip = extractIp(request);
+                return checkLimit(
+                        "rate:create:ip:" + ip,
+                        CREATE_LIMIT,
+                        response
+                );
             }
             return checkLimit(
                     "rate:create:" + apiKey,
@@ -62,13 +67,23 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             );
         }
 
+        // GET /{shortCode} — rate limit by IP
+        if ("GET".equalsIgnoreCase(method)) {
+            // Exclude system/API paths
+            if (!uri.startsWith("/urls") &&
+                    !uri.startsWith("/swagger") &&
+                    !uri.startsWith("/v3") &&
+                    !uri.startsWith("/api-docs") &&
+                    !uri.startsWith("/actuator") &&
+                    !uri.equals("/error") &&
+                    !uri.equals("/favicon.ico") &&
+                    !uri.equals("/")) {
 
-
-        if ("GET".equalsIgnoreCase(method) && uri.startsWith("/urls/")) {
-            boolean isAnalytics = uri.matches("/urls/[^/]+/analytics");
-            if (!isAnalytics) {
-                String ip = extractIp(request);
-                return checkLimit("rate:redirect:" + ip, REDIRECT_LIMIT, response);
+                // Match single-segment path
+                if (uri.matches("^/[a-zA-Z0-9_-]+$")) {
+                    String ip = extractIp(request);
+                    return checkLimit("rate:redirect:" + ip, REDIRECT_LIMIT, response);
+                }
             }
         }
 

@@ -157,6 +157,9 @@ public class LinkService {
                 .orElseThrow(() -> new ShortCodeNotFoundException(shortCode));
 
         link.setDeletedAt(LocalDateTime.now());
+        // Tombstone the short code to a format that is guaranteed to be unique (using ID),
+        // fits within the 20-character database limit, and cannot conflict with custom aliases (contains underscore).
+        link.setShortCode("del_" + link.getId());
         linkRepository.save(link);
 
         redisTemplate.delete("link:" + shortCode);

@@ -66,7 +66,7 @@ public class LinkIntegrationTest {
             .withPassword("test");
 
     @Container
-    static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+    static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis/redis-stack:latest"))
             .withExposedPorts(6379);
 
     @DynamicPropertySource
@@ -121,13 +121,13 @@ public class LinkIntegrationTest {
         String responseJson = mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
         String shortCode = objectMapper.readTree(responseJson).get("shortCode").asText();
 
         // Hit redirect once (this checks cache and saves to cache if miss)
-        mockMvc.perform(get("/urls/" + shortCode))
+        mockMvc.perform(get("/" + shortCode))
                 .andExpect(status().isFound());
 
         // Now, delete the link directly from the repository database, but NOT from cache
@@ -137,7 +137,7 @@ public class LinkIntegrationTest {
         linkRepository.delete(link);
 
         // Hit redirect again — should still succeed (302 Found) because it's served from Redis!
-        mockMvc.perform(get("/urls/" + shortCode))
+        mockMvc.perform(get("/" + shortCode))
                 .andExpect(status().isFound())
                 .andExpect(header().string("Location", "https://example.com/cache-test"));
     }
@@ -151,7 +151,7 @@ public class LinkIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andDo(print())
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
         String shortCode = objectMapper.readTree(responseJson).get("shortCode").asText();
@@ -172,7 +172,7 @@ public class LinkIntegrationTest {
         String responseJson = mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
         String shortCode = objectMapper.readTree(responseJson).get("shortCode").asText();
@@ -191,7 +191,7 @@ public class LinkIntegrationTest {
     @Test
     void unknownShortCodeReturns404WithoutDbQuery() throws Exception {
         // Query an unknown short code
-        mockMvc.perform(get("/urls/nonexistentcode"))
+        mockMvc.perform(get("/nonexistentcode"))
                 .andExpect(status().isNotFound());
 
         // Verify that linkRepository findByShortCode was never called because Bloom filter intercepted it
@@ -203,17 +203,19 @@ public class LinkIntegrationTest {
         CreateLinkRequest createRequest = new CreateLinkRequest();
         createRequest.setOriginalUrl("https://example.com/ratelimit-create");
 
-        // 10 creations should succeed
-        for (int i = 0; i < 10; i++) {
+        // 20 creations should succeed (CREATE_LIMIT = 20)
+        for (int i = 0; i < 20; i++) {
             mockMvc.perform(post("/urls")
+                            .header("X-Forwarded-For", "1.2.3.4")
                             .header("X-API-Key", "test-api-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(createRequest)))
-                    .andExpect(status().isOk());
+                    .andExpect(status().isCreated());
         }
 
-        // 11th creation should return 429
+        // 21st creation should return 429
         mockMvc.perform(post("/urls")
+                        .header("X-Forwarded-For", "1.2.3.4")
                         .header("X-API-Key", "test-api-key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
@@ -228,22 +230,23 @@ public class LinkIntegrationTest {
         createRequest.setOriginalUrl("https://example.com/ratelimit-redirect");
 
         String responseJson = mockMvc.perform(post("/urls")
+                        .header("X-Forwarded-For", "1.2.3.4")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
         String shortCode = objectMapper.readTree(responseJson).get("shortCode").asText();
 
-        // 60 redirects should succeed
-        for (int i = 0; i < 60; i++) {
-            mockMvc.perform(get("/urls/" + shortCode)
+        // 100 redirects should succeed (REDIRECT_LIMIT = 100)
+        for (int i = 0; i < 100; i++) {
+            mockMvc.perform(get("/" + shortCode)
                             .header("X-Forwarded-For", "1.2.3.4"))
                     .andExpect(status().isFound());
         }
 
-        // 61st redirect should fail with 429
-        mockMvc.perform(get("/urls/" + shortCode)
+        // 101st redirect should fail with 429
+        mockMvc.perform(get("/" + shortCode)
                         .header("X-Forwarded-For", "1.2.3.4"))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"));
@@ -257,14 +260,14 @@ public class LinkIntegrationTest {
         String responseJson = mockMvc.perform(post("/urls")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
         String shortCode = objectMapper.readTree(responseJson).get("shortCode").asText();
         Link link = linkRepository.findByShortCode(shortCode).orElseThrow();
 
         // Perform redirect
-        mockMvc.perform(get("/urls/" + shortCode)
+        mockMvc.perform(get("/" + shortCode)
                         .header("User-Agent", "Mozilla/5.0 Test")
                         .header("Referer", "http://test-ref.com")
                         .header("X-Forwarded-For", "5.6.7.8"))
@@ -280,5 +283,60 @@ public class LinkIntegrationTest {
         assertThat(click.getUserAgent()).isEqualTo("Mozilla/5.0 Test");
         assertThat(click.getReferrer()).isEqualTo("http://test-ref.com");
         assertThat(click.getIpAddress()).isEqualTo("5.6.7.8");
+    }
+
+    @Test
+    void deleteLinkApiSucceeds() throws Exception {
+        CreateLinkRequest createRequest = new CreateLinkRequest();
+        createRequest.setOriginalUrl("https://example.com/api-delete-test");
+
+        String responseJson = mockMvc.perform(post("/urls")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createRequest)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String shortCode = objectMapper.readTree(responseJson).get("shortCode").asText();
+
+        // Delete via DELETE API
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/urls/" + shortCode))
+                .andExpect(status().isNoContent());
+
+        // Redirect lookup should now fail with 404
+        mockMvc.perform(get("/" + shortCode))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void softDeletedAliasCanBeReused() throws Exception {
+        CreateLinkRequest firstRequest = new CreateLinkRequest();
+        firstRequest.setOriginalUrl("https://example.com/first-owner");
+        firstRequest.setCustomAlias("reused-alias");
+
+        // Create with alias
+        mockMvc.perform(post("/urls")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(firstRequest)))
+                .andExpect(status().isCreated());
+
+        // Trying to create again with same alias fails with 409 Conflict
+        mockMvc.perform(post("/urls")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(firstRequest)))
+                .andExpect(status().isConflict());
+
+        // Delete via DELETE API
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/urls/reused-alias"))
+                .andExpect(status().isNoContent());
+
+        // Create again with the same alias succeeds now!
+        CreateLinkRequest secondRequest = new CreateLinkRequest();
+        secondRequest.setOriginalUrl("https://example.com/second-owner");
+        secondRequest.setCustomAlias("reused-alias");
+
+        mockMvc.perform(post("/urls")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(secondRequest)))
+                .andExpect(status().isCreated());
     }
 }

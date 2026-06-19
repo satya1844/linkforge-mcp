@@ -33,7 +33,7 @@ public class UrlValidationService {
 
             BLOCKED_HOSTS.forEach(blocked -> {
                 if (host.equalsIgnoreCase(blocked) || host.startsWith("192.168.")
-                        || host.startsWith("10.") || host.startsWith("172.")) {
+                        || host.startsWith("10.") || host.matches("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*")) {
                     throw new InvalidUrlException("URL points to a private or reserved address");
                 }
             });
