@@ -11,13 +11,16 @@ import com.satya.urlshortener.Exception.ShortCodeNotFoundException;
 import com.satya.urlshortener.Repository.LinkClickRepository;
 import com.satya.urlshortener.Repository.LinkRepository;
 import com.satya.urlshortener.Util.Encoder;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -30,6 +33,7 @@ public class LinkService {
     private final RedisTemplate<String, String> redisTemplate;
     private final ClickEventService clickEventService;
     private final BloomFilterService bloomFilterService;
+    private final MeterRegistry meterRegistry;
 
     @Value("${app.baseUrl}")
     private String baseUrl;
@@ -40,7 +44,8 @@ public class LinkService {
                        UrlValidationService urlValidationService,
                        RedisTemplate<String, String> redisTemplate,
                        ClickEventService clickEventService,
-                       BloomFilterService bloomFilterService) {
+                       BloomFilterService bloomFilterService,
+                       MeterRegistry meterRegistry) {
         this.linkRepository = linkRepository;
         this.urlValidationService = urlValidationService;
         this.encoder = encoder;
@@ -48,6 +53,7 @@ public class LinkService {
         this.redisTemplate = redisTemplate;
         this.clickEventService = clickEventService;
         this.bloomFilterService = bloomFilterService;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -87,12 +93,7 @@ public class LinkService {
 
         bloomFilterService.add(shortCode);
 
-        redisTemplate.opsForValue().set(
-                "link:" + shortCode,
-                link.getId() + "::" + link.getOriginalUrl(),
-                24,
-                TimeUnit.HOURS
-        );
+        cacheLink(shortCode, link);
 
         LinkResponse response = new LinkResponse();
         response.setShortCode(shortCode);
@@ -118,6 +119,7 @@ public class LinkService {
         String referrer = httpRequest.getHeader("Referer");
 
         if (cachedValue != null) {
+            meterRegistry.counter("linkforge.cache.hits").increment();
             String[] parts = cachedValue.split("::", 2);
             Long linkId = Long.parseLong(parts[0]);
             String originalUrl = parts[1];
@@ -127,6 +129,7 @@ public class LinkService {
 
         Link link = linkRepository.findByShortCode(shortCode)
                 .orElseThrow(() -> new ShortCodeNotFoundException(shortCode));
+        meterRegistry.counter("linkforge.cache.misses").increment();
 
         // Grace period expiry check
         if (link.getExpiresAt() != null && link.getExpiresAt().isBefore(LocalDateTime.now())) {
@@ -142,12 +145,7 @@ public class LinkService {
             throw new ShortCodeExpiredException(shortCode);
         }
 
-        redisTemplate.opsForValue().set(
-                cacheKey,
-                link.getId() + "::" + link.getOriginalUrl(),
-                24,
-                TimeUnit.HOURS
-        );
+        cacheLink(shortCode, link);
 
         clickEventService.logClick(link.getId(), userAgent, referrer, ip);
         return link.getOriginalUrl();
@@ -162,6 +160,36 @@ public class LinkService {
         linkRepository.save(link);
 
         redisTemplate.delete("link:" + shortCode);
+    }
+
+    private void cacheLink(String shortCode, Link link) {
+        long ttlSeconds = 86400; // 24 hours
+        boolean useHours = true;
+        if (link.getExpiresAt() != null) {
+            long secondsToExpiry = java.time.Duration.between(LocalDateTime.now(), link.getExpiresAt()).toSeconds();
+            if (secondsToExpiry <= 0) {
+                return; // Already expired, do not cache
+            }
+            ttlSeconds = Math.min(ttlSeconds, secondsToExpiry);
+            if (ttlSeconds < 86400) {
+                useHours = false;
+            }
+        }
+        if (useHours) {
+            redisTemplate.opsForValue().set(
+                    "link:" + shortCode,
+                    link.getId() + "::" + link.getOriginalUrl(),
+                    24,
+                    TimeUnit.HOURS
+            );
+        } else {
+            redisTemplate.opsForValue().set(
+                    "link:" + shortCode,
+                    link.getId() + "::" + link.getOriginalUrl(),
+                    ttlSeconds,
+                    TimeUnit.SECONDS
+            );
+        }
     }
 
     private String extractIp(HttpServletRequest request) {
@@ -190,5 +218,23 @@ public class LinkService {
                 .ifPresent(response::setLastAccessed);
 
         return response;
+    }
+
+    public List<LinkResponse> getAllLinks() {
+        return linkRepository.findAll()
+                .stream()
+                .filter(l -> l.getDeletedAt() == null)
+                .map(this::toResponse)
+                .toList();
+    }
+
+    private LinkResponse toResponse(Link link) {
+        LinkResponse r = new LinkResponse();
+        r.setShortCode(link.getShortCode());
+        r.setShortUrl(baseUrl + "/" + link.getShortCode());
+        r.setOriginalUrl(link.getOriginalUrl());
+        r.setCreatedAt(link.getCreatedAt());
+        r.setExpiresAt(link.getExpiresAt());
+        return r;
     }
 }

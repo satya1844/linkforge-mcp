@@ -29,7 +29,7 @@ import org.springframework.data.redis.core.ValueOperations;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-
+import io.micrometer.core.instrument.MeterRegistry;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -47,7 +47,7 @@ class LinkServiceTest {
     @Mock private ClickEventService clickEventService;
     @Mock private BloomFilterService bloomFilterService;
     @Mock private ValueOperations<String, String> valueOperations;
-
+    @Mock private MeterRegistry meterRegistry = mock(MeterRegistry.class);
     private LinkService linkService;
 
     @BeforeEach
@@ -59,7 +59,8 @@ class LinkServiceTest {
                 urlValidationService,
                 redisTemplate,
                 clickEventService,
-                bloomFilterService
+                bloomFilterService,
+                meterRegistry
         );
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(bloomFilterService.mightExist(anyString())).thenReturn(true);

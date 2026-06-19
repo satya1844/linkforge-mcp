@@ -12,6 +12,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /*
 POST /urls
   → validate input
@@ -48,7 +50,10 @@ public class LinkController {
     @PostMapping
     public ResponseEntity<?> createShortUrl(@Valid @RequestBody CreateLinkRequest request) {
       LinkResponse response = linkService.createShortUrl(request);
-        return ResponseEntity.ok(response);
+      //return 201 Created with Location header pointing to the new short URL
+      return ResponseEntity.status(HttpStatus.CREATED)
+              .header(HttpHeaders.LOCATION, response.getShortUrl())
+              .body(response);
     }
 
     @GetMapping("/{shortCode}/analytics")
@@ -66,6 +71,11 @@ public class LinkController {
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, originalUrl)
                 .build();
+    }
+
+    @GetMapping
+    public ResponseEntity<List<LinkResponse>> getAllLinks() {
+        return ResponseEntity.ok(linkService.getAllLinks());
     }
 
     }

@@ -20,14 +20,22 @@ import java.util.concurrent.TimeUnit;
 public class RateLimitInterceptor implements HandlerInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitInterceptor.class);
-    private static final int  CREATE_LIMIT        = 10;
-    private static final int  REDIRECT_LIMIT      = 60;
+    private static final int  CREATE_LIMIT        = 20;
+    private static final int  REDIRECT_LIMIT      = 100;
     private static final long WINDOW_SECONDS       = 60L;
     private final RedisTemplate<String, String> redisTemplate;
 
     public RateLimitInterceptor(RedisTemplate<String, String> redisTemplate) {
         this.redisTemplate = redisTemplate;
     }
+
+    private boolean isLocalhost(HttpServletRequest request) {
+        String ip = extractIp(request);
+        return "127.0.0.1".equals(ip) || "::1".equals(ip) || "0:0:0:0:0:0:0:1".equals(ip);
+    }
+
+
+
 
     @Override
     public boolean preHandle(HttpServletRequest request,
@@ -37,6 +45,9 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         String method = request.getMethod();
         String uri    = request.getRequestURI();
 
+        if (isLocalhost(request)) {
+            return true;
+        }
         // POST /urls — rate limit by API key
         if ("POST".equalsIgnoreCase(method) && uri.startsWith("/urls")) {
             String apiKey = request.getHeader("X-API-Key");
@@ -50,6 +61,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                     response
             );
         }
+
+
 
         if ("GET".equalsIgnoreCase(method) && uri.startsWith("/urls/")) {
             boolean isAnalytics = uri.matches("/urls/[^/]+/analytics");

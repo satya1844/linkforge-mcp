@@ -16,6 +16,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -28,6 +29,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Testcontainers
 class LinkControllerTest {
+
+    static {
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));
+    }
 
     @TestConfiguration
     static class TestConfig {
@@ -57,11 +62,18 @@ class LinkControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private RedisTemplate<String, String> redisTemplate;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+        java.util.Set<String> keys = redisTemplate.keys("*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
     }
 
     @Test
